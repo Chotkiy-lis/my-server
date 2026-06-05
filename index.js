@@ -1,6 +1,7 @@
 const express = require('express');
 const mysql = require('mysql2');
 const TelegramBot = require('node-telegram-bot-api');
+const { CronJob } = require('cron');
 
 const app = express();
 const port = 3000;
@@ -23,8 +24,69 @@ connection.connect((err) => {
 const TELEGRAM_TOKEN = '8959730384:AAEzPKgK0gK6xrr5onUNWAhAOFDvRohqKXw';
 const bot = new TelegramBot(TELEGRAM_TOKEN, { polling: true });
 
+// Функция для обновления даты последнего сообщения пользователя
+function updateUserLastMessage(userId) {
+  const today = new Date().toISOString().split('T')[0];
+  const sql = `INSERT INTO Users (id, lastMessage) VALUES (?, ?)
+               ON DUPLICATE KEY UPDATE lastMessage = ?`;
+  connection.query(sql, [userId, today, today], (err) => {
+    if (err) console.error('Ошибка обновления Users:', err);
+  });
+}
+
+// Функция для получения случайного предмета
+function getRandomItem(callback) {
+  connection.query('SELECT * FROM Items ORDER BY RAND() LIMIT 1', (err, results) => {
+    if (err || results.length === 0) {
+      callback(null);
+      return;
+    }
+    callback(results[0]);
+  });
+}
+
+// Функция отправки randomItem пользователю
+function sendRandomItemToUser(chatId) {
+  getRandomItem((item) => {
+    if (item) {
+      bot.sendMessage(chatId, `🎲 *Ваш случайный предмет:*\n(${item.id}) - ${item.name}: ${item.desc}`, { parse_mode: 'Markdown' });
+    } else {
+      bot.sendMessage(chatId, '📭 В базе данных пока нет предметов.');
+    }
+  });
+}
+
+// Ежедневная проверка и рассылка в 13:00 МСК
+const cronJob = new CronJob(
+  '0 13 * * *',
+  function() {
+    console.log('Проверка пользователей, которые не писали 2+ дня...');
+    const twoDaysAgo = new Date();
+    twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
+    const twoDaysAgoStr = twoDaysAgo.toISOString().split('T')[0];
+
+    const sql = `SELECT id FROM Users WHERE lastMessage < ?`;
+    connection.query(sql, [twoDaysAgoStr], (err, users) => {
+      if (err) {
+        console.error('Ошибка получения неактивных пользователей:', err);
+        return;
+      }
+      console.log(`Найдено неактивных пользователей: ${users.length}`);
+      users.forEach(user => {
+        sendRandomItemToUser(user.id);
+      });
+    });
+  },
+  null,
+  true,
+  'Europe/Moscow'
+);
+
+console.log('Таймер запущен: каждый день в 13:00 МСК');
+
 bot.onText(/\/help/, (msg) => {
   const chatId = msg.chat.id;
+  updateUserLastMessage(msg.from.id);
   const helpText = `📋 *Список команд бота:*
 
 /help - показать этот список
@@ -51,35 +113,25 @@ bot.onText(/\/help/, (msg) => {
 
 bot.onText(/\/site/, (msg) => {
   const chatId = msg.chat.id;
+  updateUserLastMessage(msg.from.id);
   bot.sendMessage(chatId, '🌐 *Сайт Октагона:* https://octagon.ru/', { parse_mode: 'Markdown' });
 });
 
 bot.onText(/\/creator/, (msg) => {
   const chatId = msg.chat.id;
+  updateUserLastMessage(msg.from.id);
   bot.sendMessage(chatId, '👨‍💻 *Создатель бота:* Шарафутдинов Олег Денисович', { parse_mode: 'Markdown' });
 });
 
 bot.onText(/\/randomItem/, (msg) => {
   const chatId = msg.chat.id;
-  
-  connection.query('SELECT * FROM Items ORDER BY RAND() LIMIT 1', (err, results) => {
-    if (err) {
-      bot.sendMessage(chatId, '❌ Ошибка базы данных');
-      return;
-    }
-    
-    if (results.length === 0) {
-      bot.sendMessage(chatId, '📭 В базе данных нет ни одного предмета');
-      return;
-    }
-    
-    const item = results[0];
-    bot.sendMessage(chatId, `🎲 *Случайный предмет:*\n(${item.id}) - ${item.name}: ${item.desc}`, { parse_mode: 'Markdown' });
-  });
+  updateUserLastMessage(msg.from.id);
+  sendRandomItemToUser(chatId);
 });
 
 bot.onText(/\/deleteItem (.+)/, (msg, match) => {
   const chatId = msg.chat.id;
+  updateUserLastMessage(msg.from.id);
   const id = parseInt(match[1]);
   
   if (isNaN(id)) {
@@ -113,6 +165,7 @@ bot.onText(/\/deleteItem (.+)/, (msg, match) => {
 
 bot.onText(/\/getItemByID (.+)/, (msg, match) => {
   const chatId = msg.chat.id;
+  updateUserLastMessage(msg.from.id);
   const id = parseInt(match[1]);
   
   if (isNaN(id)) {
@@ -136,9 +189,9 @@ bot.onText(/\/getItemByID (.+)/, (msg, match) => {
   });
 });
 
-// Команда !qr - генерация QR-кода
 bot.onText(/^\!qr/, (msg) => {
   const chatId = msg.chat.id;
+  updateUserLastMessage(msg.from.id);
   const data = msg.text.substring(3).trim();
   
   if (!data) {
@@ -150,9 +203,9 @@ bot.onText(/^\!qr/, (msg) => {
   bot.sendMessage(chatId, `🔳 *QR-код для:* ${data}\n[📱](${qrImage})`, { parse_mode: 'Markdown' });
 });
 
-// Команда !webscr - скриншот сайта
 bot.onText(/^\!webscr/, (msg) => {
   const chatId = msg.chat.id;
+  updateUserLastMessage(msg.from.id);
   const url = msg.text.substring(7).trim();
   
   if (!url) {
@@ -170,13 +223,13 @@ bot.onText(/^\!webscr/, (msg) => {
 });
 
 bot.on('message', (msg) => {
-  if (msg.text && msg.text.startsWith('/')) return;
-  if (msg.text && msg.text.startsWith('!')) return;
+  if (msg.text && (msg.text.startsWith('/') || msg.text.startsWith('!'))) return;
   const chatId = msg.chat.id;
+  updateUserLastMessage(msg.from.id);
   bot.sendMessage(chatId, 'Привет, октагон! Напиши /help чтобы увидеть список команд.');
 });
 
-console.log('Telegram бот запущен с командами /help, /site, /creator, /randomItem, /getItemByID, /deleteItem, !qr, !webscr');
+console.log('Telegram бот запущен');
 
 app.get('/', (req, res) => {
   res.send('<h1>Привет, Октагон!</h1>');
