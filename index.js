@@ -1,17 +1,17 @@
 const express = require('express');
 const mysql = require('mysql2');
+const TelegramBot = require('node-telegram-bot-api');
+
 const app = express();
 const port = 3000;
 
-// ===== ПОДКЛЮЧЕНИЕ К БАЗЕ ДАННЫХ =====
 const connection = mysql.createConnection({
   host: 'localhost',
-  user: 'root',           // пользователь XAMPP по умолчанию
-  password: '',           // пароль по умолчанию пустой
+  user: 'root',
+  password: '',
   database: 'ChatBotTests'
 });
 
-// Проверяем подключение
 connection.connect((err) => {
   if (err) {
     console.error('Ошибка подключения к БД:', err.message);
@@ -20,131 +20,68 @@ connection.connect((err) => {
   console.log('Подключение к MySQL успешно установлено');
 });
 
-// ===== МАРШРУТЫ =====
+const TELEGRAM_TOKEN = '8959730384:AAEzPKgK0gK6xrr5onUNWAhAOFDvRohqKXw';
+const bot = new TelegramBot(TELEGRAM_TOKEN, { polling: true });
 
-// 1. Корневой маршрут (для проверки)
-app.get('/', (req, res) => {
-  res.send('<h1>Привет, Октагон!</h1><p>Сервер работает с MySQL</p>');
+bot.on('message', (msg) => {
+  const chatId = msg.chat.id;
+  bot.sendMessage(chatId, 'Привет, октагон!');
 });
 
-// 2. GET /getAllItems - получить все записи
+console.log('Telegram бот запущен');
+
+app.get('/', (req, res) => {
+  res.send('<h1>Привет, Октагон!</h1>');
+});
+
 app.get('/getAllItems', (req, res) => {
-  const sql = 'SELECT * FROM Items';
-  
-  connection.query(sql, (err, results) => {
-    if (err) {
-      console.error(err);
-      return res.json([]);  // при ошибке возвращаем пустой массив
-    }
-    res.json(results);  // возвращаем JSON-массив с объектами
+  connection.query('SELECT * FROM Items', (err, results) => {
+    if (err) return res.json([]);
+    res.json(results);
   });
 });
 
-// 3. POST /addItem?name=...&desc=... - добавить запись
 app.post('/addItem', (req, res) => {
   const { name, desc } = req.query;
+  if (!name || !desc) return res.json(null);
   
-  // Проверяем, что оба параметра переданы
-  if (!name || !desc) {
-    return res.json(null);  // неправильные параметры -> null
-  }
-  
-  const sql = 'INSERT INTO Items (name, desc) VALUES (?, ?)';
-  connection.query(sql, [name, desc], (err, result) => {
-    if (err) {
-      console.error(err);
-      return res.json(null);
-    }
-    // Возвращаем созданный объект (с новым id)
-    res.json({
-      id: result.insertId,
-      name: name,
-      desc: desc
-    });
+  connection.query('INSERT INTO Items (name, desc) VALUES (?, ?)', [name, desc], (err, result) => {
+    if (err) return res.json(null);
+    res.json({ id: result.insertId, name, desc });
   });
 });
 
-// 4. POST /deleteItem?id=number - удалить запись
 app.post('/deleteItem', (req, res) => {
   const id = req.query.id;
+  if (!id || isNaN(Number(id))) return res.json(null);
   
-  // Проверяем, что id передан и является числом
-  if (!id || isNaN(Number(id))) {
-    return res.json(null);  // неправильные параметры -> null
-  }
-  
-  // Сначала находим объект, который удалим
-  const selectSql = 'SELECT * FROM Items WHERE id = ?';
-  connection.query(selectSql, [id], (err, results) => {
-    if (err) {
-      console.error(err);
-      return res.json(null);
-    }
+  connection.query('SELECT * FROM Items WHERE id = ?', [id], (err, results) => {
+    if (err) return res.json(null);
+    if (results.length === 0) return res.json({});
     
-    if (results.length === 0) {
-      return res.json({});  // объект не нашёлся -> пустой объект
-    }
-    
-    const deletedItem = results[0];
-    
-    // Удаляем запись
-    const deleteSql = 'DELETE FROM Items WHERE id = ?';
-    connection.query(deleteSql, [id], (err) => {
-      if (err) {
-        console.error(err);
-        return res.json(null);
-      }
-      res.json(deletedItem);  // возвращаем удалённый объект
+    const item = results[0];
+    connection.query('DELETE FROM Items WHERE id = ?', [id], (err) => {
+      if (err) return res.json(null);
+      res.json(item);
     });
   });
 });
 
-// 5. POST /updateItem?id=...&name=...&desc=... - обновить запись
 app.post('/updateItem', (req, res) => {
   const { id, name, desc } = req.query;
+  if (!id || !name || !desc || isNaN(Number(id))) return res.json(null);
   
-  // Проверяем, что все параметры переданы
-  if (!id || !name || !desc || isNaN(Number(id))) {
-    return res.json(null);  // неправильные параметры -> null
-  }
-  
-  // Проверяем, существует ли запись с таким id
-  const checkSql = 'SELECT * FROM Items WHERE id = ?';
-  connection.query(checkSql, [id], (err, results) => {
-    if (err) {
-      console.error(err);
-      return res.json(null);
-    }
+  connection.query('SELECT * FROM Items WHERE id = ?', [id], (err, results) => {
+    if (err) return res.json(null);
+    if (results.length === 0) return res.json({});
     
-    if (results.length === 0) {
-      return res.json({});  // объект не нашёлся -> пустой объект
-    }
-    
-    // Обновляем запись
-    const updateSql = 'UPDATE Items SET name = ?, desc = ? WHERE id = ?';
-    connection.query(updateSql, [name, desc, id], (err) => {
-      if (err) {
-        console.error(err);
-        return res.json(null);
-      }
-      
-      // Возвращаем обновлённый объект
-      res.json({
-        id: Number(id),
-        name: name,
-        desc: desc
-      });
+    connection.query('UPDATE Items SET name = ?, desc = ? WHERE id = ?', [name, desc, id], (err) => {
+      if (err) return res.json(null);
+      res.json({ id: Number(id), name, desc });
     });
   });
 });
 
-// ===== ЗАПУСК СЕРВЕРА =====
 app.listen(port, () => {
   console.log(`Сервер запущен на http://localhost:${port}`);
-});
-
-// Закрываем подключение при завершении приложения (опционально)
-process.on('SIGINT', () => {
-  connection.end();
-  process.exit();
 });
