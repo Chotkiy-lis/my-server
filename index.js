@@ -23,9 +23,25 @@ connection.connect((err) => {
 const TELEGRAM_TOKEN = '8959730384:AAEzPKgK0gK6xrr5onUNWAhAOFDvRohqKXw';
 const bot = new TelegramBot(TELEGRAM_TOKEN, { polling: true });
 
-bot.on('message', (msg) => {
+bot.onText(/\/help/, (msg) => {
   const chatId = msg.chat.id;
-  bot.sendMessage(chatId, 'Привет, октагон!');
+  bot.sendMessage(chatId, '📋 Список команд:\n/help - помощь\n/site - сайт Октагона\n/creator - создатель бота');
+});
+
+bot.onText(/\/site/, (msg) => {
+  const chatId = msg.chat.id;
+  bot.sendMessage(chatId, '🌐 Сайт Октагона: https://octagon.ru/');
+});
+
+bot.onText(/\/creator/, (msg) => {
+  const chatId = msg.chat.id;
+  bot.sendMessage(chatId, '👨‍💻 Создатель: Шарафутдинов Олег Денисович'); // ЗАМЕНИТЕ
+});
+
+bot.on('message', (msg) => {
+  if (msg.text && msg.text.startsWith('/')) return;
+  const chatId = msg.chat.id;
+  bot.sendMessage(chatId, 'Привет, октагон! Напиши /help');
 });
 
 console.log('Telegram бот запущен');
@@ -44,7 +60,6 @@ app.get('/getAllItems', (req, res) => {
 app.post('/addItem', (req, res) => {
   const { name, desc } = req.query;
   if (!name || !desc) return res.json(null);
-  
   connection.query('INSERT INTO Items (name, desc) VALUES (?, ?)', [name, desc], (err, result) => {
     if (err) return res.json(null);
     res.json({ id: result.insertId, name, desc });
@@ -54,11 +69,9 @@ app.post('/addItem', (req, res) => {
 app.post('/deleteItem', (req, res) => {
   const id = req.query.id;
   if (!id || isNaN(Number(id))) return res.json(null);
-  
   connection.query('SELECT * FROM Items WHERE id = ?', [id], (err, results) => {
     if (err) return res.json(null);
     if (results.length === 0) return res.json({});
-    
     const item = results[0];
     connection.query('DELETE FROM Items WHERE id = ?', [id], (err) => {
       if (err) return res.json(null);
@@ -70,11 +83,9 @@ app.post('/deleteItem', (req, res) => {
 app.post('/updateItem', (req, res) => {
   const { id, name, desc } = req.query;
   if (!id || !name || !desc || isNaN(Number(id))) return res.json(null);
-  
   connection.query('SELECT * FROM Items WHERE id = ?', [id], (err, results) => {
     if (err) return res.json(null);
     if (results.length === 0) return res.json({});
-    
     connection.query('UPDATE Items SET name = ?, desc = ? WHERE id = ?', [name, desc, id], (err) => {
       if (err) return res.json(null);
       res.json({ id: Number(id), name, desc });
