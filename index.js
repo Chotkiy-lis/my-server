@@ -36,9 +36,15 @@ bot.onText(/\/help/, (msg) => {
 /getItemByID [ID] - найти предмет по ID
 /deleteItem [ID] - удалить предмет по ID
 
+✨ *Дополнительные команды:*
+!qr [текст/ссылка] - создать QR-код
+!webscr [адрес] - сделать скриншот сайта
+
 📌 *Примеры:*
 /getItemByID 1
-/deleteItem 2`;
+/deleteItem 2
+!qr https://octagon.ru
+!webscr https://google.com`;
 
   bot.sendMessage(chatId, helpText, { parse_mode: 'Markdown' });
 });
@@ -130,13 +136,47 @@ bot.onText(/\/getItemByID (.+)/, (msg, match) => {
   });
 });
 
+// Команда !qr - генерация QR-кода
+bot.onText(/^\!qr/, (msg) => {
+  const chatId = msg.chat.id;
+  const data = msg.text.substring(3).trim();
+  
+  if (!data) {
+    bot.sendMessage(chatId, '❌ Ошибка: Введите текст или ссылку для создания QR-кода.\nПример: !qr https://octagon.ru');
+    return;
+  }
+  
+  const qrImage = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(data)}`;
+  bot.sendMessage(chatId, `🔳 *QR-код для:* ${data}\n[📱](${qrImage})`, { parse_mode: 'Markdown' });
+});
+
+// Команда !webscr - скриншот сайта
+bot.onText(/^\!webscr/, (msg) => {
+  const chatId = msg.chat.id;
+  const url = msg.text.substring(7).trim();
+  
+  if (!url) {
+    bot.sendMessage(chatId, '❌ Ошибка: Введите адрес сайта для создания скриншота.\nПример: !webscr https://octagon.ru');
+    return;
+  }
+  
+  let fullUrl = url;
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    fullUrl = 'https://' + url;
+  }
+  
+  const screenshotImage = `https://api.letsvalidate.com/v1/thumbs/?url=${encodeURIComponent(fullUrl)}&width=1280&height=720`;
+  bot.sendMessage(chatId, `📸 *Скриншот сайта:* ${fullUrl}\n[🖼️](${screenshotImage})`, { parse_mode: 'Markdown' });
+});
+
 bot.on('message', (msg) => {
   if (msg.text && msg.text.startsWith('/')) return;
+  if (msg.text && msg.text.startsWith('!')) return;
   const chatId = msg.chat.id;
   bot.sendMessage(chatId, 'Привет, октагон! Напиши /help чтобы увидеть список команд.');
 });
 
-console.log('Telegram бот запущен');
+console.log('Telegram бот запущен с командами /help, /site, /creator, /randomItem, /getItemByID, /deleteItem, !qr, !webscr');
 
 app.get('/', (req, res) => {
   res.send('<h1>Привет, Октагон!</h1>');
