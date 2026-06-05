@@ -9,7 +9,8 @@
   "author": "Sharafutdinov Oleg",
   "license": "ISC",
   "dependencies": {
-    "express": "^4.18.2"
+    "express": "^4.18.2",
+    "mysql2": "^3.22.4"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"
